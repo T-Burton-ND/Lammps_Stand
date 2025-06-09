@@ -1,0 +1,69 @@
+# -------------------- Initialization --------------------
+units           real
+atom_style      full
+boundary        p p p
+
+# -------------------- Load System -----------------------
+include         "system.in.init"
+read_data       "equil_system.data"
+include         "system.in.settings"
+
+# -------------------- Replication -----------------------
+# Replicate system 3x3x3 (18 times) for diffusion calculations
+replicate       3 3 3 bond/periodic
+
+# -------------------- Group Setup -----------------------
+group li type 1
+group cl type 2
+group o  type 3
+group ec type 3 4 6 7 8 9 10 11 12
+group all_atoms union li cl ec
+
+# -------------------- Minimization -----------------------
+kspace_style    pppm 1.0e-4
+min_style       cg
+minimize        1.0e-3 1.0e-5 10000 50000
+
+# -------------------- Thermalization ---------------------
+velocity        all_atoms create 300.0 4928459 dist gaussian
+velocity        all_atoms zero linear
+
+# -------------------- Outputs ---------------------------
+timestep        0.5
+thermo_style    custom step temp press pe ke etotal density
+thermo          100
+
+# Unwrapped trajectory (for MSD/diffusion analysis)
+dump            unwrapped all custom 100 ec_unwrapped.lammpstrj id mol type x y z xu yu zu
+
+# Wrapped trajectory (for visualizing bonding across PBC)
+dump            wrapped all custom 100 ec_wrapped.lammpstrj id mol type x y z
+
+# MSD for Li+
+compute         msd_li li msd
+fix             msdout_li all ave/time 100 10 1000 c_msd_li[1] file msd_li.txt
+
+# MSD for Cl–
+compute         msd_cl cl msd
+fix             msdout_cl all ave/time 100 10 1000 c_msd_cl[1] file msd_cl.txt
+
+# RDF and coordination number between Li+ and O1
+compute         rdf_li_O1 all rdf 100 1 3
+fix             coord all ave/time 100 10 1000 c_rdf_li_O1[*] file rdf_li_o.txt mode vector
+
+# -------------------- Production Run ---------------------
+print "====================================================="
+print "====================================================="
+print "==========     Start of NVE Production     =========="
+print "====================================================="
+print "====================================================="
+
+fix             nve all nve
+fix             remove_momentum all momentum 100 linear 1 1 1
+
+run             100000
+
+unfix           nve
+unfix           remove_momentum
+
+write_data      "post_production.data"
